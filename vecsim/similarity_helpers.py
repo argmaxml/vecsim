@@ -8,7 +8,6 @@ try:
     import hnswlib
     available_engines.add("hnswlib")
 except ModuleNotFoundError:
-    print ("hnswlib not found")
     HNSWMock = collections.namedtuple("HNSWMock", ("Index", "max_elements"))
     class MockHnsw:
         def __init__(self, *args, **kwargs) -> None:
@@ -18,7 +17,6 @@ try:
     import faiss
     available_engines.add("faiss")
 except Exception:
-    print ("faiss not found")
     faiss = None
 try:
     from redis import Redis
@@ -29,38 +27,74 @@ try:
     from redis.commands.search.result import Result
     available_engines.add("redis")
 except ModuleNotFoundError:
-    print ("redis not found")
+    Redis = None
 
 def parse_server_name(sname):
     if sname in ["hnswlib", "hnsw"]:
         if "hnswlib" in available_engines:
-            return LazyHnsw
-        return SciKitNearestNeighbors
+            return HnswIndex
+        return SciKitIndex
     elif sname in ["faiss", "flatfaiss"]:
         if "faiss" in available_engines:
-            return FaissIndexFactory
-        return SciKitNearestNeighbors
+            return FaissIndex
+        return SciKitIndex
     elif sname in ["redis"]:
         if "redis" in available_engines:
             return RedisIndex
-        return SciKitNearestNeighbors
+        return SciKitIndex
     else:
-        return SciKitNearestNeighbors
+        return SciKitIndex
 
+class BaseIndex:
+    def __init__(self, metric:str, dim:int):
+        self.dim = dim
+        self.metric = metric
+        # Per partition mapping
+        self.items = collections.defaultdict(list)
+        self.ids = collections.defaultdict(list)
+        self.indices = collections.defaultdict(lambda: None)
+    def get_partitions(self):
+        return list(self.items.keys())
+    def init(self):
+        raise NotImplementedError
+    def add_items(self, data, ids, partition=None):
+        raise NotImplementedError
+    def search(self, vec, k):
+        raise NotImplementedError
+    def save(self, path):
+        raise NotImplementedError
+    def load(self, path):
+        raise NotImplementedError
+    def __repr__(self):
+        partitions = ",".join(map(str, self.items.keys()))
+        return str(type(self))+f"(dim={self.dim}, metric={self.metric}, partitions={partitions})"
+    def __str__(self):
+        return self.__repr__()
+    def __len__(self):
+        len = 0
+        for p in self.items:
+            len += len(self.items[p])
+        return len
+    def  __itemgetter__(self, item):
+        for p in self.items:
+            if item in self.ids[p]:
+                return self.items[p][self.ids[p].index(item)]
+        return None
 
-class FaissIndexFactory:
-    def __init__(self, space:str, dim:int, index_factory:str, **kwargs):
+class FaissIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
+        BaseIndex.__init__(self, metric, dim)
         if index_factory == '':
             index_factory = 'Flat'
-        if space in ['ip', 'cosine']:
+        if metric in ['ip', 'cosine']:
             self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_INNER_PRODUCT)
-            if space == 'cosine':
+            if metric == 'cosine':
                 # TODO: Support cosine
                 sys.stderr.write("cosine is not supported yet, falling back to dot\n")
-        elif space == 'l2':
+        elif metric == 'l2':
             self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_L2)
         else:
-            raise TypeError(str(space) + " is not supported")
+            raise TypeError(str(metric) + " is not supported")
         self.index = faiss.IndexIDMap2(self.index)
 
     def __len__(self):
@@ -68,6 +102,9 @@ class FaissIndexFactory:
 
     def  __itemgetter__(self, item):
         return self.index.reconstruct(int(item))
+
+    def init(self):
+        pass
     
     def add_items(self, data, ids):
         data = np.array(data).astype(np.float32)
@@ -93,9 +130,9 @@ class FaissIndexFactory:
     def load_index(self, fname):
         self.index = faiss.read_index(fname)
 
-class LazyHnsw(hnswlib.Index):
-    def __init__(self, space:str, dim:int, max_elements=1024, ef_construction=200, M=16,**kwargs):
-        super().__init__(space, dim)
+class HnswIndex(hnswlib.Index, BaseIndex):
+    def __init__(self, metric:str, dim:int, max_elements=1024, ef_construction=200, M=16,**kwargs):
+        super().__init__(metric, dim)
         self.init_max_elements = max_elements
         self.init_ef_construction = ef_construction
         self.init_M = M
@@ -154,58 +191,63 @@ class LazyHnsw(hnswlib.Index):
         return self.element_count
 
 
-class SciKitNearestNeighbors:
-    def __init__(self, space:str, dim:int, **kwargs):
-        if space=="ip":
-            self.space = "cosine"
+class SciKitIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, k=10, **kwargs):
+        BaseIndex.__init__(self, metric, dim)
+        if metric=="ip":
+            self.metric = "cosine"
             sys.stderr.write("Warning: ip is not supported by sklearn, falling back to cosine")
-        else:
-            self.space = space
-        self.dim = dim
-        self.items = []
-        self.ids = []
         self.fitted = False
-        self.index = NearestNeighbors(metric=self.space,n_jobs=-1,n_neighbors=10)
-
-    def __len__(self):
-        return len(self.items)
-
-    def  __itemgetter__(self, item):
-        return self.items[self.ids.index(item)]
+        self.k=k
+        self.indices = collections.defaultdict(lambda:NearestNeighbors(metric=self.metric,n_jobs=-1,n_neighbors=self.k))
 
     def init(self, **kwargs):
-        self.index.fit(self.items)
+        if "n_neighbors" not in kwargs:
+            kwargs["n_neighbors"] = self.k
+        self.indices = {p:NearestNeighbors(metric=self.metric,n_jobs=-1,**kwargs) for p in self.indices.keys()}
+        for p,index in self.indices.items():
+            index.fit(self.items[p])
         self.fitted = True
         
-    def add_items(self, data, ids=None, num_threads=-1):
-        self.items.extend(data)
+    def add_items(self, data, ids=None, partition=None, num_threads=-1):
         if ids is None:
-            ids = list(range(len(self.items),len(self.items)+len(data)))
-        self.ids.extend(ids)
+            ids = list(range(len(self.items[partition]),len(self.items[partition])+len(data)))
+        self.items[partition].extend(data)
+        self.ids[partition].extend(ids)
+        self.indices[partition]=None
         self.fitted = False
 
-    def get_items(self, ids=None):
-        return [self.items[self.ids.index(i)] for i in ids]
+    def get_items(self, ids=None,partition=None):
+        return [self.items[partition][self.ids[partition].index(i)] for i in ids]
 
-    def search(self, data, k=1):
+    def search(self, data, k=1,partition=None):
         if not self.fitted:
-            self.index.fit(self.items)
-            self.fitted = True
-        scores, idx = self.index.kneighbors(data ,k, return_distance=True)
-        names = [[self.ids[i] for i in ids] for ids in idx]
+            self.indices[partition].fit(self.items[partition])
+        if data.ndim==1:
+            data = data.reshape(1,-1)
+        if partition:
+            scores_p, idx_p = self.indices[partition].kneighbors(data ,k, return_distance=True)
+            scores, ids = scores_p[0], idx_p[0]
+            names = [self.ids[partition][i] for i in ids]
+        else:
+            scores, names = [], []
+            for p in self.indices:
+                scores_p, idx_p = self.indices[p].kneighbors(data ,k, return_distance=True)
+                scores_p, idx_p = scores_p[0], idx_p[0]
+                scores.extend(scores_p)
+                names.extend([self.ids[p][i] for i in idx_p])
         return scores, names
 
     def get_max_elements(self):
         return -1
 
     def get_current_count(self):
-        return len(self.items)
+        return len(self)
 
 
-class RedisIndex:
-    def __init__(self, space:str, dim:int, redis_credentials=None,max_elements=1024, ef_construction=200, M=16, overwrite=True,**kwargs):
-        self.space = space
-        self.dim = dim
+class RedisIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, redis_credentials=None,max_elements=1024, ef_construction=200, M=16, overwrite=True,**kwargs):
+        BaseIndex.__init__(self, metric, dim)
         self.max_elements = max_elements
         self.ef_construction = ef_construction
         self.M = M
@@ -229,6 +271,9 @@ class RedisIndex:
         # applicable only for user events
         self.user_keys=[]
     
+    def init(self):
+        pass
+
     def __enter__(self):
         self.pipe = self.redis.pipeline()
         return self
@@ -264,7 +309,7 @@ class RedisIndex:
         results = self.redis.ft(self.index_name).search(q, query_params = params_dict)
         scores, ids = [], []
         for item in results.docs:
-            scores.append(item.vector_score)
+            scores.append(float(item.vector_score))
             ids.append(item.item_id)
         return scores, ids
 
@@ -342,7 +387,7 @@ class RedisIndex:
 
     def init_hnsw(self, **kwargs):
         self.redis.ft(self.index_name).create_index([
-        VectorField("embedding", "HNSW", {"TYPE": "FLOAT32", "DIM": self.dim, "DISTANCE_METRIC": self.space, "INITIAL_CAP": self.max_elements, "M": self.M, "EF_CONSTRUCTION": self.ef_construction}),
+        VectorField("embedding", "HNSW", {"TYPE": "FLOAT32", "DIM": self.dim, "DISTANCE_METRIC": self.metric, "INITIAL_CAP": self.max_elements, "M": self.M, "EF_CONSTRUCTION": self.ef_construction}),
         TextField("item_id"),
         TagField("partition")
         ])  
@@ -361,7 +406,7 @@ class RedisIndex:
 
 if __name__=="__main__":
     # docker run -p 6379:6379 redislabs/redisearch:2.4.5
-    sim = RedisIndex(space='cosine',dim=32,redis_credentials={"host":"127.0.0.1", "port": 6379}, overwrite=True)
+    sim = RedisIndex(metric='cosine',dim=32,redis_credentials={"host":"127.0.0.1", "port": 6379}, overwrite=True)
     data=np.random.random((100,32))
     aids=["a"+str(1+i) for i in range(100)]
     bids=["b"+str(101+i) for i in range(100)]
