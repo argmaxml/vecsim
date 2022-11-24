@@ -81,9 +81,10 @@ class BaseIndex:
                 return self.items[p][self.ids[p].index(item)]
         return None
 
-class FaissIndex(BaseIndex):
+class FaissIndexUnpartitioned:
     def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
-        BaseIndex.__init__(self, metric, dim)
+        self.dim = dim
+        self.metric = metric
         if index_factory == '':
             index_factory = 'Flat'
         if metric in ['ip', 'cosine']:
@@ -130,9 +131,10 @@ class FaissIndex(BaseIndex):
     def load_index(self, fname):
         self.index = faiss.read_index(fname)
 
-class HnswIndex(hnswlib.Index, BaseIndex):
+class HnswIndexUnpartitioned(hnswlib.Index):
     def __init__(self, metric:str, dim:int, max_elements=1024, ef_construction=200, M=16,**kwargs):
-        super().__init__(metric, dim)
+        self.dim = dim
+        self.space = metric
         self.init_max_elements = max_elements
         self.init_ef_construction = ef_construction
         self.init_M = M
@@ -403,6 +405,17 @@ class RedisIndex(BaseIndex):
     def info(self):
         """Get Redis info as dict"""
         return self.redis.ft(self.index_name).info()
+
+
+class FaissIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
+        BaseIndex.__init__(self, metric, dim)
+        self.indices = collections.defaultdict(lambda:FaissIndexUnpartitioned(metric, dim, index_factory, **kwargs))
+
+class HnswIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, max_elements=1024, ef_construction=200, M=16,**kwargs):
+        BaseIndex.__init__(self, metric, dim)
+        self.indices = collections.defaultdict(lambda:HnswIndexUnpartitioned(metric, dim, max_elements, ef_construction, M, **kwargs))
 
 if __name__=="__main__":
     # docker run -p 6379:6379 redislabs/redisearch:2.4.5
