@@ -5,15 +5,6 @@ import collections
 from sklearn.neighbors import NearestNeighbors
 available_engines = {"sklearn"}
 try:
-    import hnswlib
-    available_engines.add("hnswlib")
-except ModuleNotFoundError:
-    HNSWMock = collections.namedtuple("HNSWMock", ("Index", "max_elements"))
-    class MockHnsw:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-    hnswlib = HNSWMock(MockHnsw(),0)
-try:
     import faiss
     available_engines.add("faiss")
 except Exception:
@@ -29,45 +20,73 @@ try:
 except ModuleNotFoundError:
     Redis = None
 
-def parse_server_name(sname):
-    if sname in ["hnswlib", "hnsw"]:
-        if "hnswlib" in available_engines:
-            return HnswIndex
-        return SciKitIndex
-    elif sname in ["faiss", "flatfaiss"]:
-        if "faiss" in available_engines:
-            return FaissIndex
-        return SciKitIndex
-    elif sname in ["redis"]:
-        if "redis" in available_engines:
-            return RedisIndex
-        return SciKitIndex
-    else:
-        return SciKitIndex
 
 class BaseIndex:
     def __init__(self, metric:str, dim:int):
         self.dim = dim
         self.metric = metric
+        self.fitted = False
         # Per partition mapping
         self.items = collections.defaultdict(list)
         self.ids = collections.defaultdict(list)
         self.indices = collections.defaultdict(lambda: None)
+        self.cls = None
+        self.cls_args = {}
     def get_partitions(self):
         return list(self.items.keys())
-    def init(self):
-        raise NotImplementedError
-    def add_items(self, data, ids, partition=None):
-        raise NotImplementedError
-    def search(self, vec, k):
-        raise NotImplementedError
-    def save(self, path):
-        raise NotImplementedError
-    def load(self, path):
-        raise NotImplementedError
+    def init(self, **kwargs):
+        kwargs = {**self.cls_args, **kwargs}
+        if hasattr(self.cls, "fit"):
+            self.indices = {p:self.cls(**kwargs) for p in self.indices.keys()}
+        for p,index in self.indices.items():
+            if hasattr(index, "fit"):
+                index.fit(self.items[p])
+            elif hasattr(index, "init"):
+                index.init()
+        self.fitted = True
+    def add_items(self, data, ids=None, partition=None):
+        if ids is None:
+            ids = list(range(len(self.items[partition]),len(self.items[partition])+len(data)))
+        if hasattr(self.cls, 'add_items'):
+            self.ids[partition].extend(ids)
+            nids = [self.ids[partition].index(i) for i in ids]
+            self.indices[partition].add_items(data, nids)
+        else:
+            self.items[partition].extend(data)
+            self.indices[partition]=None
+            self.ids[partition].extend(ids)
+        self.fitted = False
+
+    def get_items(self, ids=None,partition=None):
+        if hasattr(self.indices[partition], "get_items"):
+            return self.indices[partition].get_items(ids)
+        return [self.items[partition][self.ids[partition].index(i)] for i in ids]
+
+    def search(self, data, k=1,partition=None):
+        if not self.fitted:
+            if hasattr(self.indices[partition], "fit"):
+                self.indices[partition].fit(self.items[partition])
+            elif hasattr(self.indices[partition], "init"):
+                self.indices[partition].init()
+        if data.ndim==1:
+            data = data.reshape(1,-1)
+        if partition:
+            scores_p, idx_p = self.indices[partition].search(data, k)
+            scores, ids = scores_p[0], idx_p[0]
+            names = [self.ids[partition][i] for i in ids]
+        else:
+            scores, names = [], []
+            for p in self.indices:
+                scores_p, idx_p = self.indices[p].search(data, k)
+                if len(scores_p)==0:
+                    continue
+                scores_p, idx_p = scores_p[0], idx_p[0]
+                scores.extend(scores_p)
+                names.extend([self.ids[p][i] for i in idx_p])
+        return scores, names
     def __repr__(self):
         partitions = ",".join(map(str, self.items.keys()))
-        return str(type(self))+f"(dim={self.dim}, metric={self.metric}, partitions={partitions})"
+        return f"{self.cls.__name__}(dim={self.dim}, metric={self.metric}, partitions={partitions})"
     def __str__(self):
         return self.__repr__()
     def __len__(self):
@@ -90,8 +109,7 @@ class FaissIndexUnpartitioned:
         if metric in ['ip', 'cosine']:
             self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_INNER_PRODUCT)
             if metric == 'cosine':
-                # TODO: Support cosine
-                sys.stderr.write("cosine is not supported yet, falling back to dot\n")
+                sys.stderr.write("cosine is not supported by faiss, falling back to dot\n")
         elif metric == 'l2':
             self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_L2)
         else:
@@ -131,67 +149,12 @@ class FaissIndexUnpartitioned:
     def load_index(self, fname):
         self.index = faiss.read_index(fname)
 
-class HnswIndexUnpartitioned(hnswlib.Index):
-    def __init__(self, metric:str, dim:int, max_elements=1024, ef_construction=200, M=16,**kwargs):
-        self.dim = dim
-        self.space = metric
-        self.init_max_elements = max_elements
-        self.init_ef_construction = ef_construction
-        self.init_M = M
 
-    def __len__(self):
-        return self.get_current_count()
-
-    def  __itemgetter__(self, item):
-        return super().get_items([item])[0]
-
-    def init(self, max_elements=0):
-        if max_elements == 0:
-            max_elements = self.init_max_elements
-        super().init_index(max_elements, self.init_M, self.init_ef_construction)
-
-    def add_items(self, data, ids=None, num_threads=-1):
-        if self.max_elements == 0:
-            self.init()
-        if self.max_elements<len(data)+self.element_count:
-            super().resize_index(max([len(data)+self.element_count,self.max_elements]))
-        return super().add_items(data, ids, num_threads)
-
-    def add(self, data):
-        return self.add_items(data)
-
-    def get_items(self, ids=None):
-        if self.max_elements == 0:
-            return []
-        return super().get_items(ids)
-
-    def knn_query(self, data, k=1, num_threads=-1):
-        if self.max_elements == 0:
-            return [], []
-        return super().knn_query(data, k, num_threads)
-
+class SciKitIndexUnpartitioned(NearestNeighbors):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
     def search(self, data, k=1):
-        I,D = self.knn_query(data, k)
-        return (D,I)
-
-    def resize_index(self, size):
-        if self.max_elements == 0:
-            return self.init(size)
-        else:
-            return super().resize_index(size)
-
-    def set_ef(self, ef):
-        if self.max_elements == 0:
-            self.init_ef_construction = ef
-            return
-        super().set_ef(ef)
-
-    def get_max_elements(self):
-        return self.max_elements
-
-    def get_current_count(self):
-        return self.element_count
-
+        return super().kneighbors(data, k, return_distance=True)
 
 class SciKitIndex(BaseIndex):
     def __init__(self, metric:str, dim:int, k=10, **kwargs):
@@ -199,52 +162,9 @@ class SciKitIndex(BaseIndex):
         if metric=="ip":
             self.metric = "cosine"
             sys.stderr.write("Warning: ip is not supported by sklearn, falling back to cosine")
-        self.fitted = False
-        self.k=k
-        self.indices = collections.defaultdict(lambda:NearestNeighbors(metric=self.metric,n_jobs=-1,n_neighbors=self.k))
-
-    def init(self, **kwargs):
-        if "n_neighbors" not in kwargs:
-            kwargs["n_neighbors"] = self.k
-        self.indices = {p:NearestNeighbors(metric=self.metric,n_jobs=-1,**kwargs) for p in self.indices.keys()}
-        for p,index in self.indices.items():
-            index.fit(self.items[p])
-        self.fitted = True
-        
-    def add_items(self, data, ids=None, partition=None, num_threads=-1):
-        if ids is None:
-            ids = list(range(len(self.items[partition]),len(self.items[partition])+len(data)))
-        self.items[partition].extend(data)
-        self.ids[partition].extend(ids)
-        self.indices[partition]=None
-        self.fitted = False
-
-    def get_items(self, ids=None,partition=None):
-        return [self.items[partition][self.ids[partition].index(i)] for i in ids]
-
-    def search(self, data, k=1,partition=None):
-        if not self.fitted:
-            self.indices[partition].fit(self.items[partition])
-        if data.ndim==1:
-            data = data.reshape(1,-1)
-        if partition:
-            scores_p, idx_p = self.indices[partition].kneighbors(data ,k, return_distance=True)
-            scores, ids = scores_p[0], idx_p[0]
-            names = [self.ids[partition][i] for i in ids]
-        else:
-            scores, names = [], []
-            for p in self.indices:
-                scores_p, idx_p = self.indices[p].kneighbors(data ,k, return_distance=True)
-                scores_p, idx_p = scores_p[0], idx_p[0]
-                scores.extend(scores_p)
-                names.extend([self.ids[p][i] for i in idx_p])
-        return scores, names
-
-    def get_max_elements(self):
-        return -1
-
-    def get_current_count(self):
-        return len(self)
+        self.cls = SciKitIndexUnpartitioned
+        self.cls_args={"n_neighbors":k, "metric":self.metric, "n_jobs":-1}
+        self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
 
 
 class RedisIndex(BaseIndex):
@@ -410,21 +330,6 @@ class RedisIndex(BaseIndex):
 class FaissIndex(BaseIndex):
     def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
         BaseIndex.__init__(self, metric, dim)
-        self.indices = collections.defaultdict(lambda:FaissIndexUnpartitioned(metric, dim, index_factory, **kwargs))
-
-class HnswIndex(BaseIndex):
-    def __init__(self, metric:str, dim:int, max_elements=1024, ef_construction=200, M=16,**kwargs):
-        BaseIndex.__init__(self, metric, dim)
-        self.indices = collections.defaultdict(lambda:HnswIndexUnpartitioned(metric, dim, max_elements, ef_construction, M, **kwargs))
-
-if __name__=="__main__":
-    # docker run -p 6379:6379 redislabs/redisearch:2.4.5
-    sim = RedisIndex(metric='cosine',dim=32,redis_credentials={"host":"127.0.0.1", "port": 6379}, overwrite=True)
-    data=np.random.random((100,32))
-    aids=["a"+str(1+i) for i in range(100)]
-    bids=["b"+str(101+i) for i in range(100)]
-    sim.add_items(data,aids,partition="a")
-    sim.add_items(data,bids,partition="b")
-    # print(sim.search(data[0],k=10,partition=None))
-    # print(sim.get_items(aids[:10]))
-    print (sim.item_keys())
+        self.cls = FaissIndexUnpartitioned
+        self.cls_args={"metric":self.metric,"dim":self.dim,"index_factory":index_factory}
+        self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
