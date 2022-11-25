@@ -4,7 +4,7 @@
 
 project = 'vecsim'
 copyright = '2022, ArgMaxML'
-author = 'ArgMaxML'
+author = 'ArgmaxML'
 
 release = '0.1'
 version = '0.1.0'

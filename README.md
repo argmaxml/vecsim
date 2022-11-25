@@ -11,11 +11,6 @@ A standard, light-weight interface to all popular similarity servers.
 1. [RediSearch](https://redis.io/docs/stack/search/reference/vectors/)
 1. [Faiss](https://github.com/facebookresearch/faiss)
 
-## Use cases for similarity servers
-1. **Recommendation**
-1. **Lookalikes**
-1. **Search**
-1. **Anomaly Detection**
 
 ## QuickStart example
 ```python
@@ -36,3 +31,5 @@ query = np.random.random(32)
 dists, items = self.sim.search(query,k=10,partition="customers") # returns a list of customers and products
 dists, items = self.sim.search(query,k=10) # returns a list of only customers
 ```
+
+For more examples, please read our [documentation](https://vecsim.readthedocs.io/)
