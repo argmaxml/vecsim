@@ -15,21 +15,29 @@ A standard, light-weight interface to all popular similarity servers.
 ## QuickStart example
 ```python
 import numpy as np
+# Import a similarity server of your choice:
+# SKlearn (best for small datasets or testing)
 from vecsim import SciKitIndex
 sim = SciKitIndex(metric='cosine', dim=32)
-# Feed in some vectors for both customers and products
-customer_ids=["customer_"+str(1+i) for i in range(100)]
-customer_data = np.random.random((100,32))
-product_ids=["product_"+str(101+i) for i in range(100)]
-product_data = np.random.random((100,32))
-sim.add_items(customer_data,customer_ids,partition="customers")
-sim.add_items(product_data,product_ids,partition="products")
+# OR Faiss:
+# from vecsim import FaissIndex
+# sim = FaissIndex(metric='ip', dim=32, index_factory='L2norm,Flat')
+# OR Faiss:
+# from vecsim import RedisIndex
+# sim = RedisIndex(metric='cosine', dim=32, redis_credentials={"host":"127.0.0.1", "port": 6379}, overwrite=True)
+# Feed in some vectors for both users and items
+user_ids = ["user_"+str(1+i) for i in range(100)]
+user_data = np.random.random((100,32))
+item_ids=["item_"+str(101+i) for i in range(100)]
+item_data = np.random.random((100,32))
+sim.add_items(user_data,user_ids,partition="users")
+sim.add_items(item_data,item_ids,partition="items")
 # Index the data
 sim.init()
 # Run nearest neighbor vector search
 query = np.random.random(32)
-dists, items = self.sim.search(query,k=10,partition="customers") # returns a list of customers and products
-dists, items = self.sim.search(query,k=10) # returns a list of only customers
+dists, items = sim.search(query,k=10) # returns a list of users and items
+dists, items = sim.search(query,k=10,partition="users") # returns a list of only users
 ```
 
 For more examples, please read our [documentation](https://vecsim.readthedocs.io/)
