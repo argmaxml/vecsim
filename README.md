@@ -22,7 +22,7 @@ sim = SciKitIndex(metric='cosine', dim=32)
 # OR Faiss:
 # from vecsim import FaissIndex
 # sim = FaissIndex(metric='ip', dim=32, index_factory='L2norm,Flat')
-# OR Faiss:
+# OR Redis:
 # from vecsim import RedisIndex
 # sim = RedisIndex(metric='cosine', dim=32, redis_credentials={"host":"127.0.0.1", "port": 6379}, overwrite=True)
 # Feed in some vectors for both users and items
