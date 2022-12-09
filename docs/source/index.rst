@@ -2,21 +2,28 @@ VecSim
 ==========================================
 VecSim is a lightweight wrapper to provide standard interface for similarity search over vectors.
 
-The problems we are trying to solve:
+Why use VecSim
 -------------------------------------------
 
 1. **Standard API** - Different vector similarity servers has different APIs - so switching is not trivial.
 2. **Identifiers** - Some vector similarity servers support string IDs, some do not - we keep track of the mapping.
 3. **Partitions** - In most cases, a pre-filtering is needed prior to querying, we abstract this concept away.
 
-Getting Started
+Installation
 ---------------
 
 First, install the package:
 
-```bash
+```
 pip install vecsim
 ```
+
+If you you are using a specific similarity engine, such as redis or faiss - you can install it as well:
+
+```
+pip install vecsim[redis]
+pip install vecsim[faiss]
+``` 
 
 
 Then, you can use the package as follows:
@@ -28,6 +35,7 @@ Then, you can use the package as follows:
 Choose the similarity engine, see the :doc:`Supported Engines<engines>` section for more details.
 
 Quick Start
+----------------
 
 .. code-block:: python
 
