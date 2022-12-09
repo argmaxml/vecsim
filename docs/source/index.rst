@@ -14,9 +14,9 @@ Getting Started
 
 First, install the package:
 
-.. code-block:: bash
-
+```bash
 pip install vecsim
+```
 
 
 Then, you can use the package as follows:
@@ -30,7 +30,7 @@ Choose the similarity engine, see the :doc:`Supported Engines<engines>` section 
 Quick Start
 
 .. code-block:: python
-    
+
     import numpy as np
     from vecsim import SciKitIndex
     sim = SciKitIndex(metric='cosine', dim=32)
