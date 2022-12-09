@@ -27,7 +27,7 @@ setup(
     extras_require = {
         'faiss': ['faiss-cpu>=1.7.1'],
         'redis': ['redis>=4.3.0'],
-        's3': ['smart_open[s3]~=3.0.0'],
+        'elasticsearch': ['elasticsearch>=8.5.0'],
         'postgres': ['psycopg2-binary~=2.9.3',"SQLAlchemy~=1.3.22"],
 
     }
