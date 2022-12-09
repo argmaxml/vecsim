@@ -333,7 +333,7 @@ class RedisIndex(BaseIndex):
         """Get Redis info as dict"""
         return self.redis.ft(self.index_name).info()
 
-class ElasticsIndex(BaseIndex):
+class ElasticIndex(BaseIndex):
     def __init__(self, metric:str, dim:int, elastic_credentials,index_name="vecsim",M=16,ef_construction=100,**kwargs):
         self.es = Elasticsearch(**elastic_credentials)
         self.index_name = index_name
