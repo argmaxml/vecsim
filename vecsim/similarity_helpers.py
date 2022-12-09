@@ -1,4 +1,4 @@
-import sys
+import sys, json
 from typing import Dict
 import numpy as np
 import collections
@@ -19,6 +19,13 @@ try:
     available_engines.add("redis")
 except ModuleNotFoundError:
     Redis = None
+
+try:
+    from elasticsearch import Elasticsearch
+    from elasticsearch.helpers import bulk
+    available_engines.add("elastic")
+except ModuleNotFoundError:
+    Elasticsearch = None
 
 
 class BaseIndex:
@@ -325,6 +332,82 @@ class RedisIndex(BaseIndex):
     def info(self):
         """Get Redis info as dict"""
         return self.redis.ft(self.index_name).info()
+
+class ElasticsIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, elastic_credentials,index_name="vecsim",M=16,ef_construction=100,**kwargs):
+        self.es = Elasticsearch(**elastic_credentials)
+        self.index_name = index_name
+        if metric=="ip":
+            metric="dot_product"
+        elif metric=="l2":
+            metric="l2_norm"
+        mappings =  {
+            "properties": {
+                "vec": {
+                    "type": "dense_vector",
+                    "dims": dim,
+                    "index": True,
+                    "similarity": metric,
+                    "index_options": {
+                        "type": "hnsw",
+                        "M": M,
+                        "efConstruction": ef_construction
+                    }
+                },
+                "partition" : {
+                    "type": "string",
+                    "analyzer": "keyword"
+                    },
+                "id": {
+                    "type": "string",
+                    "analyzer": "keyword"
+                },
+                },
+                # "text" : {
+                #     "type" : "keyword"
+                # }
+        }
+            
+        self.es.indices.create(index=index_name, ignore=400, body={"mappings":mappings})
+    
+    def add_items(self, data, ids=None, partition=None):
+        bulk(self.es, [{
+                "_index": self.index_name,
+                "_type": "_doc",
+                "_source": {"vec": [float(x) for x in datum], "id": str(id), "partition":partition},
+            } for datum, id in zip(data, ids)])
+    
+    def search(self, data, k=1,partition=None):
+        if partition:
+            query = {"query": {"bool": {"must": [{"match": {"partition": partition}}, {"knn": {"vec": [float(x) for x in data], "k": k}}]}}}
+        else:
+            query = {"query": {"knn": {"vec": [float(x) for x in data], "k": k}}}
+        res = self.es.search(index=self.index_name, body=query)
+        ids = [x["_source"]["id"] for x in res["hits"]["hits"]]
+        scores = [x["_score"] for x in res["hits"]["hits"]]
+        return scores, ids
+
+    def init(self, **kwargs):
+        pass
+
+    def get_items(self, ids=None):
+        """Get items by id"""
+        if ids is None:
+            ids = []
+        if not isinstance(ids, list):
+            ids = [ids]
+        res = self.es.mget(index=self.index_name, body={"ids": ids})
+        return [np.array(x["_source"]["vec"]) for x in res["docs"] if x["found"]]
+
+    def get_current_count(self):
+        """Get number of items in index"""
+        return self.es.count(index=self.index_name)["count"]
+    
+    def __len__(self):
+        return self.get_current_count()
+
+    def  __itemgetter__(self, item):
+        return super().get_items([item])[0]
 
 
 class FaissIndex(BaseIndex):

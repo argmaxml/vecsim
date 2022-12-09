@@ -102,3 +102,11 @@ solving a growing number of use cases. Elasticsearch is built on Apache Lucene
 that provides a full-text search engine with vector similarity search and
 geo-spatial capabilities. Elasticsearch is a good choice for medium to large
 datasets. Elasticsearch is the preferred choice when the majority of the vectors are sparse.
+
+
+**Example:**
+
+.. code-block:: python
+
+    from vecsim import ElasticIndex
+    sim = ElasticIndex(metric='cosine', dim=32, elastic_credentials={"hosts": "http://127.0.0.1:9200"})
