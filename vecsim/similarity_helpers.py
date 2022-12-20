@@ -97,10 +97,10 @@ class BaseIndex:
     def __str__(self):
         return self.__repr__()
     def __len__(self):
-        len = 0
+        length = 0
         for p in self.items:
-            len += len(self.items[p])
-        return len
+            length += len(self.items[p])
+        return length
     def  __itemgetter__(self, item):
         for p in self.items:
             if item in self.ids[p]:
