@@ -61,10 +61,16 @@ class BaseIndex:
         else:
             self.items[partition].extend(data)
             self.indices[partition]=None
+            n_before = len(set(self.ids[partition]))
             self.ids[partition].extend(ids)
+            n_after = len(set(self.ids[partition]))
+            if n_after != n_before+len(ids):
+                raise ValueError("ids must be unique")
         self.fitted = False
 
     def get_items(self, ids=None,partition=None):
+        if type(ids)==str:
+            raise SyntaxError("ids must be a list")
         if hasattr(self.indices[partition], "get_items"):
             return self.indices[partition].get_items(ids)
         return [self.items[partition][self.ids[partition].index(i)] for i in ids]
@@ -90,6 +96,10 @@ class BaseIndex:
                 scores_p, idx_p = scores_p[0], idx_p[0]
                 scores.extend(scores_p)
                 names.extend([self.ids[p][i] for i in idx_p])
+            if len(names)>k:
+                sorter = np.argsort(scores)
+                scores = np.array(scores)[sorter].tolist()[:k]
+                names = np.array(names)[sorter].tolist()[:k]
         return scores, names
     def __repr__(self):
         partitions = ",".join(map(str, self.items.keys()))
@@ -161,6 +171,9 @@ class SciKitIndexUnpartitioned(NearestNeighbors):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
     def search(self, data, k=1):
+        if k>self.n_neighbors:
+            sys.stderr.write("Warning: k is larger than n_neighbors, falling back to n_neighbors\n")
+            k = self.n_neighbors
         return super().kneighbors(data, k, return_distance=True)
 
 class SciKitIndex(BaseIndex):
