@@ -363,16 +363,16 @@ class ElasticIndex(BaseIndex):
                     "similarity": metric,
                     "index_options": {
                         "type": "hnsw",
-                        "M": M,
-                        "efConstruction": ef_construction
+                        "m": M,
+                        "ef_construction": ef_construction
                     }
                 },
                 "partition" : {
-                    "type": "string",
+                    "type": "text",
                     "analyzer": "keyword"
                     },
                 "id": {
-                    "type": "string",
+                    "type": "text",
                     "analyzer": "keyword"
                 },
                 },
@@ -386,15 +386,14 @@ class ElasticIndex(BaseIndex):
     def add_items(self, data, ids=None, partition=None):
         bulk(self.es, [{
                 "_index": self.index_name,
-                "_type": "_doc",
                 "_source": {"vec": [float(x) for x in datum], "id": str(id), "partition":partition},
             } for datum, id in zip(data, ids)])
     
-    def search(self, data, k=1,partition=None):
+    def search(self, data, k=1,partition=None, num_candidates=50):
         if partition:
-            query = {"query": {"bool": {"must": [{"match": {"partition": partition}}, {"knn": {"vec": [float(x) for x in data], "k": k}}]}}}
+            query = {"query": {"bool": {"must": [{"match": {"partition": partition}}, {"knn": {"field":"vec","query_vector": [float(x) for x in data], "k": k, "num_candidates": num_candidates}}]}}}
         else:
-            query = {"query": {"knn": {"vec": [float(x) for x in data], "k": k}}}
+            query = {"knn": {"field":"vec","query_vector": [float(x) for x in data], "k": k, "num_candidates": num_candidates}}
         res = self.es.search(index=self.index_name, body=query)
         ids = [x["_source"]["id"] for x in res["hits"]["hits"]]
         scores = [x["_score"] for x in res["hits"]["hits"]]
