@@ -44,7 +44,7 @@ on the GPU. It is a good choice for medium to large datasets.
 
 
 The implementation of the FaissIndex class is based on the `faiss` Python package.
-We use the the `index_factory` parameter to create the index. The `index_factory`
+We use the `index_factory` parameter to create the index. The `index_factory`
 parameter is a string that describes the type of the index to create, possibly
 followed by a comma-separated list of options. The following index types are
 supported:
