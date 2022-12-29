@@ -1,10 +1,10 @@
-# VecSim - an unified interface for similarity servers
+# VecSim - A unified interface for similarity servers
 A standard, light-weight interface to all popular similarity servers.
 
 ## The problems we are trying to solve:
-1. **Standard API** - Different vector similarity servers has different APIs - so switching is not trivial.
+1. **Standard API** - Different vector similarity servers have different APIs - so switching is not trivial.
 1. **Identifiers** - Some vector similarity servers support string IDs, some do not - we keep track of the mapping.
-1. **Partitions** - In most cases, a pre-filtering is needed prior to querying, we abstract this concept away.
+1. **Partitions** - In most cases, pre-filtering is needed prior to querying, we abstract this concept away.
 
 ## Supported engines:
 1. Scikit-learn, via [NearestNeighbors](https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.NearestNeighbors.html)
@@ -32,7 +32,7 @@ sim.init()
 # Run nearest neighbor vector search
 query = np.random.random(32)
 dists, items = sim.search(query, k=10) # returns a list of users and items
-dists, items = sim.search(query, k=10, partition="users") # returns a list of only users
+dists, items = sim.search(query, k=10, partition="users") # returns a list of users only
 ```
 
 For more examples, please read our [documentation](https://vecsim.readthedocs.io/)
