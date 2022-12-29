@@ -1,13 +1,13 @@
 VecSim
 ==========================================
-VecSim is a lightweight wrapper to provide standard interface for similarity search over vectors.
+VecSim is a lightweight wrapper that provides a standard interface for similarity search over vectors.
 
 Why use VecSim
 -------------------------------------------
 
-1. **Standard API** - Different vector similarity servers has different APIs - so switching is not trivial.
+1. **Standard API** - Different vector similarity servers have different APIs - so switching is not trivial.
 2. **Identifiers** - Some vector similarity servers support string IDs, some do not - we keep track of the mapping.
-3. **Partitions** - In most cases, a pre-filtering is needed prior to querying, we abstract this concept away.
+3. **Partitions** - In most cases, pre-filtering is needed prior to querying, we abstract this concept away.
 
 Installation
 ---------------
@@ -18,7 +18,7 @@ First, install the package:
 pip install vecsim
 ```
 
-If you you are using a specific similarity engine, such as redis or faiss - you can install it as well:
+If you are using a specific similarity engine, such as redis or faiss - you can install it as well:
 
 ```
 pip install vecsim[redis]
@@ -56,5 +56,5 @@ Quick Start
     # Run nearest neighbor vector search
     query = np.random.random(32)
     dists, items = sim.search(query,k=10) # returns a list of users and items
-    dists, items = sim.search(query,k=10,partition="users") # returns a list of only users
+    dists, items = sim.search(query,k=10,partition="users") # returns a list of users only
 
