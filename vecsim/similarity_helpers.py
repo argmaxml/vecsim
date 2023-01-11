@@ -52,8 +52,22 @@ class BaseIndex:
                 index.init()
         self.fitted = True
     def add_items(self, data, ids=None, partition=None):
+        # Support for adding items to multiple partitions
+        if type(partition)==np.str_:
+            partition = str(partition)
+        if hasattr(partition, "__iter__") and type(partition)!=str:
+            data = np.array(data)
+            ids = np.array(ids)
+            ps = set(partition)
+            partition = np.array(partition)
+            for p in ps:
+                self.add_items(data[partition==p], ids[partition==p], p)
+            return
+        # Support for adding items to a single partition
         if ids is None:
             ids = list(range(len(self.items[partition]),len(self.items[partition])+len(data)))
+        elif type(ids)==np.ndarray:
+            ids = ids.tolist()
         if hasattr(self.cls, 'add_items'):
             self.ids[partition].extend(ids)
             nids = [self.ids[partition].index(i) for i in ids]
@@ -257,6 +271,18 @@ class RedisIndex(BaseIndex):
 
     def add_items(self, data, ids=None, partition=None):
         """Add items and ids to the index, if a partition is not defined it defaults to NONE"""
+        # Support for adding items to multiple partitions
+        if type(partition)==np.str_:
+            partition = str(partition)
+        if hasattr(partition, "__iter__") and type(partition)!=str:
+            data = np.array(data)
+            ids = np.array(ids)
+            ps = set(partition)
+            partition = np.array(partition)
+            for p in ps:
+                self.add_items(data[partition==p], ids[partition==p], p)
+            return
+        # Support for adding items to a single partition
         self.pipe = self.redis.pipeline(transaction=False)
         if partition is None:
             partition="NONE"
@@ -384,6 +410,18 @@ class ElasticIndex(BaseIndex):
         self.es.indices.create(index=index_name, ignore=400, body={"mappings":mappings})
     
     def add_items(self, data, ids=None, partition=None):
+        # Support for adding items to multiple partitions
+        if type(partition)==np.str_:
+            partition = str(partition)
+        if hasattr(partition, "__iter__") and type(partition)!=str:
+            data = np.array(data)
+            ids = np.array(ids)
+            ps = set(partition)
+            partition = np.array(partition)
+            for p in ps:
+                self.add_items(data[partition==p], ids[partition==p], p)
+            return
+        # Support for adding items to a single partition
         bulk(self.es, [{
                 "_index": self.index_name,
                 "_source": {"vec": [float(x) for x in datum], "id": str(id), "partition":partition},

@@ -29,7 +29,14 @@ class SciKitTest(unittest.TestCase):
         dists, items = self.sim.search(data[0],k=10,partition="b")
         self.assertTrue(all([i.startswith("b") for i in items]))
     
-        
+    def test_partition_list(self):
+        data=np.random.random((200,32))
+        ids=["a"+str(1+i) for i in range(100)]+["b"+str(101+i) for i in range(100)]
+        ps = np.array(["a"]*100 + ["b"]*100)
+        self.sim.add_items(data,ids,partition=ps)
+        self.sim.init()
+        dists, items = self.sim.search(data[0],k=10,partition="b")
+        self.assertTrue(all([i.startswith("b") for i in items]))
 
 
 
