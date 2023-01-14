@@ -104,7 +104,10 @@ class BaseIndex:
         else:
             scores, names = [], []
             for p in self.indices:
-                scores_p, idx_p = self.indices[p].search(data, k)
+                try:
+                    scores_p, idx_p = self.indices[p].search(data, k)
+                except ValueError:
+                    continue
                 if len(scores_p)==0:
                     continue
                 scores_p, idx_p = scores_p[0], idx_p[0]
@@ -207,6 +210,7 @@ class RedisIndex(BaseIndex):
         self.max_elements = max_elements
         self.ef_construction = ef_construction
         self.M = M
+        self.partitions = set()
         if kwargs.get("index_name") is None:
             self.index_name = "idx"
         else:
@@ -257,6 +261,8 @@ class RedisIndex(BaseIndex):
 
     def search(self, data, k=1,partition=None):
         """Search the nearest neighbors of the given vectors, and a given partition."""
+        if partition is not None and partition not in self.partitions:
+            raise Exception(f"Partition {partition} does not exist")
         query_vector = np.array(data).astype(np.float32).tobytes()
         #prepare the query
         p = "(@partition:{"+partition+"})" if partition is not None else "*"
@@ -286,10 +292,12 @@ class RedisIndex(BaseIndex):
         self.pipe = self.redis.pipeline(transaction=False)
         if partition is None:
             partition="NONE"
+        self.partitions.add(partition)
         for datum, id in zip(data, ids):
             key='item:'+ str(id)
             emb = np.array(datum).astype(np.float32).tobytes()
             self.pipe.hset(key,mapping={"embedding": emb, "item_id": str(id), "partition":partition})
+    
                 
         self.pipe.execute()
         self.pipe = None
@@ -376,6 +384,7 @@ class ElasticIndex(BaseIndex):
     def __init__(self, metric:str, dim:int, elastic_credentials,index_name="vecsim",M=16,ef_construction=100,**kwargs):
         self.es = Elasticsearch(**elastic_credentials)
         self.index_name = index_name
+        self.partitions = set()
         if metric=="ip":
             metric="dot_product"
         elif metric=="l2":
@@ -422,12 +431,15 @@ class ElasticIndex(BaseIndex):
                 self.add_items(data[partition==p], ids[partition==p], p)
             return
         # Support for adding items to a single partition
+        self.partitions.add(partition)
         bulk(self.es, [{
                 "_index": self.index_name,
                 "_source": {"vec": [float(x) for x in datum], "id": str(id), "partition":partition},
             } for datum, id in zip(data, ids)])
     
     def search(self, data, k=1,partition=None, num_candidates=50):
+        if partition is not None and partition not in self.partitions:
+            raise Exception(f"Partition {partition} does not exist")
         if partition:
             query = {"query": {"bool": {"must": [{"match": {"partition": partition}}, {"knn": {"field":"vec","query_vector": [float(x) for x in data], "k": k, "num_candidates": num_candidates}}]}}}
         else:
