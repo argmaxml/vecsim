@@ -1,7 +1,7 @@
 import sys, unittest, json
 import numpy as np
 from pathlib import Path
-sys.path.append(str(Path(__file__).absolute().parent.parent))
+sys.path.insert(0, str(Path(__file__).absolute().parent.parent))
 from vecsim import FaissIndex
 
 

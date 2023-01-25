@@ -70,8 +70,7 @@ class BaseIndex:
             ids = ids.tolist()
         if hasattr(self.cls, 'add_items'):
             self.ids[partition].extend(ids)
-            nids = [self.ids[partition].index(i) for i in ids]
-            self.indices[partition].add_items(data, nids)
+            self.indices[partition].add_items(data)
         else:
             self.items[partition].extend(data)
             self.indices[partition]=None
@@ -133,91 +132,6 @@ class BaseIndex:
             if item in self.ids[p]:
                 return self.items[p][self.ids[p].index(item)]
         return None
-
-class FaissFlatUnpartitioned:
-    def __init__(self, metric:str, dim:int):
-        self.dim = dim
-        self.metric = metric
-        if metric in ['ip', 'dot']:
-            self.index = faiss.IndexFlatIP(self.dim)
-        elif metric == 'cosine':
-            faiss.NormalizationTransform()
-            self.index = faiss.IndexFlatIP(self.dim)
-        elif metric == 'l2':
-            self.index = faiss.IndexFlatL2(self.dim)
-        else:
-            raise TypeError(str(metric) + " is not supported")
-        self.index = faiss.IndexIDMap2(self.index)
-
-    def add_items(self, data, ids):
-        data = np.array(data).astype(np.float32)
-        if self.metric=='cosine':
-            data/=np.linalg.norm(data,axis=1).reshape(self.dim,-1)
-        self.index.add(data)
-
-    def get_current_count(self):
-        return self.index.ntotal
-
-    def search(self, data, k=1):
-        data = np.array(data).astype(np.float32)
-        if self.metric=='cosine':
-            data/=np.linalg.norm(data,axis=1).reshape(self.dim,-1)
-        return self.index.search(data,k)
-
-    def save_index(self, fname):
-        return faiss.write_index(self.index, fname)
-
-    def load_index(self, fname):
-        self.index = faiss.read_index(fname)
-class FaissIndexUnpartitioned:
-    def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
-        self.dim = dim
-        self.metric = metric
-        if index_factory == '':
-            index_factory = 'Flat'
-        if metric in ['ip', 'cosine']:
-            self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_INNER_PRODUCT)
-            if metric == 'cosine':
-                sys.stderr.write("cosine is not supported by faiss, falling back to dot\n")
-        elif metric == 'l2':
-            self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_L2)
-        else:
-            raise TypeError(str(metric) + " is not supported")
-        self.index = faiss.IndexIDMap2(self.index)
-
-    def __len__(self):
-        return self.get_current_count()
-
-    def  __itemgetter__(self, item):
-        return self.index.reconstruct(int(item))
-
-    def init(self):
-        pass
-    
-    def add_items(self, data, ids):
-        data = np.array(data).astype(np.float32)
-        self.index.add_with_ids(data, np.array(ids, dtype='int64'))
-
-    def get_items(self, ids):
-        # recmap = {k:i for i,k in enumerate(faiss.vector_to_array(self.index.id_map))}
-        # return np.vstack([self.index.reconstruct(recmap[v]) for v in ids])
-        return np.vstack([self.index.reconstruct(int(v)) for v in ids])
-
-    def get_max_elements(self):
-        return -1
-
-    def get_current_count(self):
-        return self.index.ntotal
-
-    def search(self, data, k=1):
-        return self.index.search(np.array(data).astype(np.float32),k)
-
-    def save_index(self, fname):
-        return faiss.write_index(self.index, fname)
-
-    def load_index(self, fname):
-        self.index = faiss.read_index(fname)
-
 
 class SciKitIndexUnpartitioned(NearestNeighbors):
     def __init__(self, **kwargs):
@@ -507,16 +421,98 @@ class ElasticIndex(BaseIndex):
         return super().get_items([item])[0]
 
 
+
+## Faiss
+
+class FaissBase:
+    def add_items(self, data):
+        data = np.array(data).astype(np.float32)
+        if self.metric=='cosine':
+            faiss.normalize_L2(data)
+        if hasattr(self.index, "is_trained") and not self.index.is_trained:
+            self.index.train(data)
+        # self.data = data
+        self.index.add(data)
+
+    def init(self):
+        pass
+
+    def get_current_count(self):
+        return self.index.ntotal
+
+    def search(self, data, k=1):
+        data = np.array(data).astype(np.float32)
+        if self.metric=='cosine':
+            faiss.normalize_L2(data)
+            # data/=np.linalg.norm(data,axis=1)
+        return self.index.search(data,k)
+
+    def save_index(self, fname):
+        return faiss.write_index(self.index, fname)
+
+    def load_index(self, fname):
+        self.index = faiss.read_index(fname)
+    def __len__(self):
+        return self.get_current_count()
+class FaissFlatIndexUnpartitioned(FaissBase):
+    def __init__(self, metric:str, dim:int):
+        self.dim = dim
+        self.metric = metric
+        if metric in ['ip', 'dot']:
+            self.index = faiss.IndexFlatIP(self.dim)
+        elif metric == 'cosine':
+            self.index = faiss.IndexFlatIP(self.dim)
+        elif metric == 'l2':
+            self.index = faiss.IndexFlatL2(self.dim)
+        else:
+            raise TypeError(str(metric) + " is not supported")
+
+class FaissIVFPQIndexUnpartitioned(FaissFlatIndexUnpartitioned):
+    def __init__(self, metric:str, dim:int, nlist:int=256, m:int=8, nbits:int=8):
+        super().__init__(metric, dim)
+        self.index = faiss.IndexIVFPQ(self.index, self.dim, nlist, m, nbits)
+
+
+class FaissIndexFactoryUnpartitioned(FaissBase):
+    def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
+        self.dim = dim
+        self.metric = metric
+        if index_factory == '':
+            index_factory = 'Flat'
+        if metric in ['ip', 'dot', 'cosine']:
+            self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_INNER_PRODUCT)
+        elif metric == 'l2':
+            self.index = faiss.index_factory(dim, index_factory, faiss.METRIC_L2)
+        else:
+            raise TypeError(str(metric) + " is not supported")
+
+    def  __itemgetter__(self, item):
+        return self.index.reconstruct(int(item))
+
+    def get_items(self, ids):
+        # recmap = {k:i for i,k in enumerate(faiss.vector_to_array(self.index.id_map))}
+        # return np.vstack([self.index.reconstruct(recmap[v]) for v in ids])
+        return np.vstack([self.index.reconstruct(int(v)) for v in ids])
+
+
+
 class FaissIndex(BaseIndex):
     def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
         BaseIndex.__init__(self, metric, dim)
-        self.cls = FaissIndexUnpartitioned
+        self.cls = FaissIndexFactoryUnpartitioned
         self.cls_args={"metric":self.metric,"dim":self.dim,"index_factory":index_factory}
         self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
 
 class FaissFlatIndex(BaseIndex):
     def __init__(self, metric:str, dim:int, **kwargs):
         BaseIndex.__init__(self, metric, dim)
-        self.cls = FaissFlatIndex
+        self.cls = FaissFlatIndexUnpartitioned
+        self.cls_args={"metric":self.metric,"dim":self.dim}
+        self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
+
+class FaissIVFPQIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, **kwargs):
+        BaseIndex.__init__(self, metric, dim)
+        self.cls = FaissIVFPQIndexUnpartitioned
         self.cls_args={"metric":self.metric,"dim":self.dim}
         self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
