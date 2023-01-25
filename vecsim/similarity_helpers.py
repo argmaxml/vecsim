@@ -134,6 +134,41 @@ class BaseIndex:
                 return self.items[p][self.ids[p].index(item)]
         return None
 
+class FaissFlatUnpartitioned:
+    def __init__(self, metric:str, dim:int):
+        self.dim = dim
+        self.metric = metric
+        if metric in ['ip', 'dot']:
+            self.index = faiss.IndexFlatIP(self.dim)
+        elif metric == 'cosine':
+            faiss.NormalizationTransform()
+            self.index = faiss.IndexFlatIP(self.dim)
+        elif metric == 'l2':
+            self.index = faiss.IndexFlatL2(self.dim)
+        else:
+            raise TypeError(str(metric) + " is not supported")
+        self.index = faiss.IndexIDMap2(self.index)
+
+    def add_items(self, data, ids):
+        data = np.array(data).astype(np.float32)
+        if self.metric=='cosine':
+            data/=np.linalg.norm(data,axis=1).reshape(self.dim,-1)
+        self.index.add(data)
+
+    def get_current_count(self):
+        return self.index.ntotal
+
+    def search(self, data, k=1):
+        data = np.array(data).astype(np.float32)
+        if self.metric=='cosine':
+            data/=np.linalg.norm(data,axis=1).reshape(self.dim,-1)
+        return self.index.search(data,k)
+
+    def save_index(self, fname):
+        return faiss.write_index(self.index, fname)
+
+    def load_index(self, fname):
+        self.index = faiss.read_index(fname)
 class FaissIndexUnpartitioned:
     def __init__(self, metric:str, dim:int, index_factory:str, **kwargs):
         self.dim = dim
@@ -477,4 +512,11 @@ class FaissIndex(BaseIndex):
         BaseIndex.__init__(self, metric, dim)
         self.cls = FaissIndexUnpartitioned
         self.cls_args={"metric":self.metric,"dim":self.dim,"index_factory":index_factory}
+        self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
+
+class FaissFlatIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, **kwargs):
+        BaseIndex.__init__(self, metric, dim)
+        self.cls = FaissFlatIndex
+        self.cls_args={"metric":self.metric,"dim":self.dim}
         self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
