@@ -299,10 +299,12 @@ class RedisIndex(BaseIndex):
         ret = self.redis.lrange("user:"+str(user_id), 0, -1)
         return [dict(zip(self.user_keys,x.decode().split('|'))) for x in ret]
     
-    def set_vector(self, key, arr, prefix="vec:"):
+    def set_vector(self, key, arr, prefix="vec:", ttl:int=60*60*24):
         """Sets a numpy array as a vector in redis"""
         emb = np.array(arr).astype(np.float32).tobytes()
         self.redis.set(prefix+str(key), emb)
+        if ttl:
+            self.redis.expire(prefix+str(key), ttl)
         return self
     
     def get_vector(self, key, prefix="vec:"):
