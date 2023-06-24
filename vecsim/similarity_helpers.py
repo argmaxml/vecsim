@@ -10,6 +10,11 @@ try:
 except Exception:
     faiss = None
 try:
+    import pinecone
+    available_engines.add("pinecone")
+except Exception:
+    pinecone = None
+try:
     from redis import Redis
     from redis.commands.search.field import VectorField
     from redis.commands.search.field import TextField

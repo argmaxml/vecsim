@@ -30,6 +30,7 @@ setup(
         'faiss': ['faiss-cpu>=1.7.1'],
         'redis': ['redis>=4.3.0'],
         'elasticsearch': ['elasticsearch>=8.5.0'],
+        'pinecone': ['pinecone-client>=2.2.0'],
         'postgres': ['psycopg2-binary~=2.9.3',"SQLAlchemy~=1.3.22"],
 
     }
