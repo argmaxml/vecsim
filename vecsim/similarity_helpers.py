@@ -539,7 +539,10 @@ class PineconeIndex(BaseIndex):
         else:
             raise TypeError(str(metric) + " is not supported")
         pinecone.init(**pinecone_credentials)
-        pinecone.create_index(index_name, dimension=dim, metric=metric, **kwargs)
+        try:
+            pinecone.describe_index(index_name)
+        except:
+            pinecone.create_index(index_name, dimension=dim, metric=metric)
         self.index = pinecone.Index(index_name)
 
     def _get_data_chunks(self, iterable, batch_size=100):
@@ -576,7 +579,7 @@ class PineconeIndex(BaseIndex):
                             ), range(len(ids)))
             
         for ids_vectors_chunk in self._get_data_chunks(data_generator, batch_size=100):
-            self.index.upsert(vectors=ids_vectors_chunk)
+            self.index.upsert(vectors=list(ids_vectors_chunk))
 
     
     def search(self, data, k=1,partition=None):
@@ -584,11 +587,12 @@ class PineconeIndex(BaseIndex):
             raise Exception(f"Partition {partition} does not exist")
         query_args = {
             "vector": [float(i) for i in data],
-            "topK": k,
+            "top_k": k,
         }
         if partition:
             query_args["filter"] = {"partition": {"$eq": partition}}
-        res = self.index.query(**query_args)
-        ids = [x["id"] for x in res]
-        scores = [x["score"] for x in res]
+        response = self.index.query(**query_args)
+        matches = response['matches']
+        ids = [x["id"] for x in matches]
+        scores = [x["score"] for x in matches]
         return scores, ids
