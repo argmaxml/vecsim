@@ -2,6 +2,7 @@ import sys, json
 from typing import Dict
 import numpy as np
 import collections
+import itertools
 from sklearn.neighbors import NearestNeighbors
 available_engines = {"sklearn"}
 try:
@@ -523,3 +524,71 @@ class FaissIVFPQIndex(BaseIndex):
         self.cls = FaissIVFPQIndexUnpartitioned
         self.cls_args={"metric":self.metric,"dim":self.dim}
         self.indices = collections.defaultdict(lambda:self.cls(**self.cls_args))
+
+## Pinecone
+class PineconeIndex(BaseIndex):
+    def __init__(self, metric:str, dim:int, pinecone_credentials, index_name="vecsim",**kwargs):
+        self.index_name = index_name
+        self.partitions = set()
+        if metric == "cosine":
+            pass
+        elif metric in ['ip', 'dot']:
+            metric = 'dotproduct'
+        elif metric == 'l2':
+            metric = 'euclidean'
+        else:
+            raise TypeError(str(metric) + " is not supported")
+        pinecone.init(**pinecone_credentials)
+        pinecone.create_index(index_name, dimension=dim, metric=metric, **kwargs)
+        self.index = pinecone.Index(index_name)
+
+    def _get_data_chunks(self, iterable, batch_size=100):
+        """A helper function to break an iterable into chunks of size batch_size."""
+        it = iter(iterable)
+        chunk = tuple(itertools.islice(it, batch_size))
+        while chunk:
+            yield chunk
+            chunk = tuple(itertools.islice(it, batch_size))
+
+    def add_items(self, data, ids, partition=None):
+        # Support for adding items to multiple partitions
+        if type(partition)==np.str_:
+            partition = str(partition)
+        if hasattr(partition, "__iter__") and type(partition)!=str:
+            data = np.array(data)
+            ids = np.array(ids)
+            ps = set(partition)
+            partition = np.array(partition)
+            for p in ps:
+                self.add_items(data[partition==p], ids[partition==p], p)
+            return
+        self.partitions.add(partition)
+        if partition is not None:
+            data_generator = map(lambda i: (
+                ids[i], 
+                [float(item) for item in data[i]],
+                {"partition": partition}
+                ), range(len(ids)))
+        else:
+            data_generator = map(lambda i: (
+                            str(ids[i]), 
+                            [float(item) for item in data[i]]
+                            ), range(len(ids)))
+            
+        for ids_vectors_chunk in self._get_data_chunks(data_generator, batch_size=100):
+            self.index.upsert(vectors=ids_vectors_chunk)
+
+    
+    def search(self, data, k=1,partition=None):
+        if partition is not None and partition not in self.partitions:
+            raise Exception(f"Partition {partition} does not exist")
+        query_args = {
+            "vector": [float(i) for i in data],
+            "topK": k,
+        }
+        if partition:
+            query_args["filter"] = {"partition": {"$eq": partition}}
+        res = self.index.query(**query_args)
+        ids = [x["id"] for x in res]
+        scores = [x["score"] for x in res]
+        return scores, ids
