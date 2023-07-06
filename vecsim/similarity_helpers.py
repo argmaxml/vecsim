@@ -596,3 +596,20 @@ class PineconeIndex(BaseIndex):
         ids = [x["id"] for x in matches]
         scores = [x["score"] for x in matches]
         return scores, ids
+    
+    def get_items(self, ids):
+        """Get items by id"""
+        if not isinstance(ids, list):
+            ids = [ids]
+        res = self.index.fetch(ids)
+        return [np.array(res['vectors'][x]["values"]) for x in res['vectors'].keys()]
+
+    def get_current_count(self):
+        """Get number of items in index"""
+        index_stats = self.index.describe_index_stats()
+        return index_stats['total_vector_count']
+    
+## TODO ASK URI
+# 1. Multiple partition ?
+# 2. Adding functionality for multiple partition for group ?
+# 3. Adding more functions
