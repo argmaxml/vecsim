@@ -26,6 +26,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r test/requirements.txt
     - name: Run unit tests
+      env:
+        PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        PINECONE_ENV: ${{ secrets.PINECONE_ENV }}
       run: python -m unittest discover -s test -p '*_test.py'
 
   deploy:
