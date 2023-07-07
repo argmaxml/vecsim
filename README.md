@@ -11,6 +11,7 @@ A standard, light-weight interface to all popular similarity servers.
 1. [RediSearch](https://redis.io/docs/stack/search/reference/vectors/)
 1. [Faiss](https://github.com/facebookresearch/faiss)
 1. [ElasticSearch](https://www.elastic.co)
+1. [Pinecone](https://www.pinecone.io)
 
 
 ## QuickStart example

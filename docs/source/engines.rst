@@ -7,6 +7,7 @@ The following similarity engines are supported:
 2. Faiss
 3. Redis
 4. Elasticsearch
+5. Pinecone
 
 Scikit-learn
 ----------------
@@ -110,3 +111,21 @@ datasets. Elasticsearch is the preferred choice when the majority of the vectors
 
     from vecsim import ElasticIndex
     sim = ElasticIndex(metric='cosine', dim=32, elastic_credentials={"hosts": "http://127.0.0.1:9200"})
+
+
+Pinecone
+----------------
+
+Elasticsearch is a distributed, RESTful search and analytics engine capable of
+solving a growing number of use cases. Elasticsearch is built on Apache Lucene
+that provides a full-text search engine with vector similarity search and
+geo-spatial capabilities. Elasticsearch is a good choice for medium to large
+datasets. Elasticsearch is the preferred choice when the majority of the vectors are sparse.
+
+
+**Example:**
+
+.. code-block:: python
+
+    from vecsim import PineconeIndex
+    sim = PineconeIndex(metric='cosine', dim=32,pinecone_credentials={"api_key": "PINECONE_API_KEY", "environment": "PINECONE_ENV"})
