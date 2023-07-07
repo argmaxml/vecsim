@@ -542,7 +542,7 @@ class PineconeIndex(BaseIndex):
         try:
             pinecone.describe_index(index_name)
         except:
-            pinecone.create_index(index_name, dimension=dim, metric=metric)
+            pinecone.create_index(index_name, dimension=dim, metric=metric, **kwargs)
         self.index = pinecone.Index(index_name)
 
     def _get_data_chunks(self, iterable, batch_size=100):
@@ -609,7 +609,5 @@ class PineconeIndex(BaseIndex):
         index_stats = self.index.describe_index_stats()
         return index_stats['total_vector_count']
     
-## TODO ASK URI
-# 1. Multiple partition ?
-# 2. Adding functionality for multiple partition for group ?
-# 3. Adding more functions
+
+
