@@ -5,6 +5,7 @@ A standard, light-weight interface to all popular similarity servers.
 1. **Standard API** - Different vector similarity servers have different APIs - so switching is not trivial.
 1. **Identifiers** - Some vector similarity servers support string IDs, some do not - we keep track of the mapping.
 1. **Partitions** - In most cases, pre-filtering is needed prior to querying, we abstract this concept away.
+1. **Aggregations** - In some cases, one item is being indexed to multiple vectors.
 
 ## Supported engines:
 1. Scikit-learn, via [NearestNeighbors](https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.NearestNeighbors.html)

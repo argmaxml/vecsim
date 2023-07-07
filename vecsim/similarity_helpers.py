@@ -123,6 +123,27 @@ class BaseIndex:
                 scores = np.array(scores)[sorter].tolist()[:k]
                 names = np.array(names)[sorter].tolist()[:k]
         return scores, names
+
+    def search_and_aggregate(self, data, k=1,partition=None,aggfunc='len',delim="|",reverse=False):
+        if type(aggfunc)==str:
+                if aggfunc == "len":
+                    aggfunc = len
+                    reverse = True
+                if aggfunc in dir(np):
+                    aggfunc = getattr(np, aggfunc)
+        scores, ids = self.search(data, k,partition)
+        if len(scores)==0:
+            return [], []
+        scores_lst = collections.defaultdict(list)
+        for score, id in zip(scores, ids):
+            grp_id = id.split(delim,1)[0]
+            scores_lst[grp_id].append(score)
+        ret = {}
+        for grp_id in scores_lst:
+            ret[grp_id] = aggfunc(scores_lst[grp_id])
+        ret = sorted(ret.items(), key=lambda x: x[1], reverse=reverse)
+        ids, scores = zip(*ret)
+        return scores, ids
     def __repr__(self):
         partitions = ",".join(map(str, self.items.keys()))
         return f"{self.cls.__name__}(dim={self.dim}, metric={self.metric}, partitions={partitions})"
