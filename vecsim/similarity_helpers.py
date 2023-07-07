@@ -531,7 +531,7 @@ class PineconeIndex(BaseIndex):
         self.index_name = index_name
         self.partitions = set()
         if metric == "cosine":
-            pass
+            metric = 'cosine'
         elif metric in ['ip', 'dot']:
             metric = 'dotproduct'
         elif metric == 'l2':

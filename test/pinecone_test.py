@@ -1,4 +1,4 @@
-import sys, unittest, json
+import sys, unittest, os
 import numpy as np
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).absolute().parent.parent))
@@ -6,7 +6,7 @@ from vecsim.similarity_helpers import PineconeIndex
 
 class PineconeTest(unittest.TestCase):
     def setUp(self):
-        self.sim = PineconeIndex(metric='cosine',dim=32, pinecone_credentials={"api_key": "2b8090ad-e880-48ef-bd4a-1c14c5af5c0f", "environment": "us-west4-gcp"})
+        self.sim = PineconeIndex(metric='cosine',dim=32, pinecone_credentials={"api_key": os.environ.get("PINECONE_API_KEY"), "environment": os.environ.get("PINECONE_ENV")})
     
     def test_search(self):
         data=np.eye(32)
