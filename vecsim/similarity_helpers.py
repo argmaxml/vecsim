@@ -203,7 +203,11 @@ class RedisIndex(BaseIndex):
                 index_exists = False
             if index_exists:
                 self.redis.ft(self.index_name).dropindex(delete_documents=True)
-        self.init_hnsw()
+            self.init_hnsw()
+        try:
+            self.redis.ft(self.index_name).info()
+        except:
+            raise Exception("Index not found, please initialize the index by setting overwrite to True")
         # applicable only for user events
         self.user_keys=[]
     
