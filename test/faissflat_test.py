@@ -6,6 +6,7 @@ from vecsim import FaissFlatIndex, FaissIVFPQIndex
 
 
 class FlatFaissTest(unittest.TestCase):
+    pass
     
     # def test_search(self):
     #     self.sim = FaissFlatIndex(metric='cosine',dim=32)
