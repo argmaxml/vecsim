@@ -227,7 +227,7 @@ class RedisIndex(BaseIndex):
     def  __itemgetter__(self, item):
         return super().get_items([item])[0]
 
-    def user_keys(self):
+    def get_user_keys(self):
         """Get all user keys"""
         return [s.decode()[5:] for s in self.redis.keys("user:*")]
 
@@ -458,6 +458,12 @@ class ElasticIndex(BaseIndex):
 ## Faiss
 
 class FaissBase:
+    def __init__(self, metric:str, dim:int):
+        self.dim = dim
+        self.metric = metric
+        self.index = None
+        self.data = None
+        
     def add_items(self, data):
         data = np.array(data).astype(np.float32)
         if self.metric=='cosine':
